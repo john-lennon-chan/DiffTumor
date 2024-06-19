@@ -1,0 +1,59 @@
+dataset:
+  name: liver_tumor_train
+  image_channels: 1
+  fold: 0
+  dataset_list:
+  - PET_CT_tumour_train
+  data_root_path: D:\testing_AI_environment\DiffTumor_data\
+  label_root_path: D:\testing_AI_environment\DiffTumor_data\
+  data_txt_path: D:\testing_AI_environment\DiffTumor_data\Autopet\
+  dist: false
+  batch_size: 4
+  num_workers: 1
+  a_min: -175
+  a_max: 250
+  b_min: -1.0
+  b_max: 1.0
+  space_x: 1.0
+  space_y: 1.0
+  space_z: 1.0
+  roi_x: 96
+  roi_y: 96
+  roi_z: 96
+  num_samples: 10
+  phase: train
+  uniform_sample: true
+  datasetkey:
+  - '10_03'
+  cache_dataset: true
+  cache_rate: 0.001
+model:
+  vqgan_ckpt: D:\testing_AI_environment\DiffTumor_data\AutoencoderModel.ckpt
+  diffusion_img_size: 24
+  diffusion_depth_size: 24
+  diffusion_num_channels: 17
+  out_dim: 8
+  dim_mults:
+  - 1
+  - 2
+  - 4
+  - 8
+  results_folder: checkpoints/ddpm/
+  results_folder_postfix: fold0_tumor_early_96_t4
+  load_milestone: false
+  batch_size: 2
+  num_workers: 20
+  logger: wandb
+  objective: pred_x0
+  save_and_sample_every: 5
+  denoising_fn: Unet3D
+  train_lr: 0.0001
+  timesteps: 4
+  sampling_timesteps: 250
+  loss_type: l1
+  train_num_steps: 60000
+  gradient_accumulate_every: 2
+  ema_decay: 0.995
+  amp: false
+  num_sample_rows: 1
+  gpus: 0

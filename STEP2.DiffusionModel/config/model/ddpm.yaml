@@ -1,4 +1,4 @@
-vqgan_ckpt: 'AutoencoderModel.ckpt'
+vqgan_ckpt: D:\testing_AI_environment\DiffTumor_data\AutoencoderModel.ckpt
 
 # Have to be derived from VQ-GAN Latent space dimensions
 diffusion_img_size: 24

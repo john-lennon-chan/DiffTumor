@@ -1,10 +1,10 @@
 name: liver_tumor_train
 image_channels: 1
 fold: 0
-dataset_list: ['liver_tumor_data_early_fold']
-data_root_path: ../Task03_Liver
-label_root_path: ../preprocessed_labels
-data_txt_path: cross_eval/
+dataset_list: ['PET_CT_tumour_train']
+data_root_path: ../../DiffTumor_data/
+label_root_path: ../../DiffTumor_data/
+data_txt_path: D:\testing_AI_environment\DiffTumor_data\Autopet\
 dist: False
 batch_size: 4
 num_workers: 1 # should be 8, but reduced so that no error comes out
@@ -21,7 +21,7 @@ roi_y: 96
 roi_z: 96
 num_samples: 10
 phase: train
-uniform_sample: True
+uniform_sample: False
 datasetkey: ['10_03']
 cache_dataset: True
-cache_rate: 1.0
+cache_rate: 0.001 #1

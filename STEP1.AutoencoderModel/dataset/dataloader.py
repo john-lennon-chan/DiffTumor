@@ -185,6 +185,9 @@ class LoadImaged_BodyMap(MapTransform):
         if os.path.exists(lbl_dir + 'pancreas_tumor' + '.nii.gz'):
             array, mata_infomation = self._loader(lbl_dir + 'kidney_tumor' + '.nii.gz')
             organ_lbl[array > 0] = 6
+        if os.path.exists(lbl_dir + 'tumour' + '.nii.gz'):
+            array, mata_infomation = self._loader(lbl_dir + 'tumour' + '.nii.gz')
+            organ_lbl[array > 0] = 7
 
         return organ_lbl, mata_infomation
 
@@ -370,6 +373,7 @@ def get_key(name):
     if dataset_index == 10:
         template_key = name[0:2] + '_' + name[17:19]
     else:
+        template_key = name[0:2]
     return template_key
 
 if __name__ == "__main__":
