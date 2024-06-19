@@ -4,7 +4,7 @@ fold: 0
 dataset_list: ['PET_CT_tumour_train']
 data_root_path: ../../DiffTumor_data/
 label_root_path: ../../DiffTumor_data/
-data_txt_path: D:\testing_AI_environment\DiffTumor_data\Autopet\
+data_txt_path: ../../DiffTumor_data/Autopet/
 dist: False
 batch_size: 4
 num_workers: 1 # should be 8, but reduced so that no error comes out
