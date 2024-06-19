@@ -2,12 +2,12 @@ name: liver_tumor_train
 image_channels: 1
 fold: 0
 dataset_list: ['liver_tumor_data_early_fold']
-data_root_path: /mnt/ccvl15/zzhou82/PublicAbdominalData/
-label_root_path: /mnt/ccvl15/qichen/process_label/
+data_root_path: ../Task03_Liver
+label_root_path: ../preprocessed_labels
 data_txt_path: cross_eval/
 dist: False
-batch_size: 1
-num_workers: 8
+batch_size: 4
+num_workers: 1 # should be 8, but reduced so that no error comes out
 
 a_min: -175
 a_max: 250

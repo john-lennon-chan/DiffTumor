@@ -370,7 +370,6 @@ def get_key(name):
     if dataset_index == 10:
         template_key = name[0:2] + '_' + name[17:19]
     else:
-        template_key = name[0:2]
     return template_key
 
 if __name__ == "__main__":
