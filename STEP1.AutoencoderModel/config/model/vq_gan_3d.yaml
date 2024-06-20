@@ -4,10 +4,10 @@ num_workers: 16
 gpus: 1
 accumulate_grad_batches: 1
 default_root_dir: checkpoints/vq_gan/
-default_root_dir_postfix: '8k_96_d4_steplr'
-resume: False
-resume_version: 0
-resume_from_checkpoint: ~
+default_root_dir_postfix: testing # '8k_96_d4_steplr'
+resume: True
+resume_version: 9
+resume_from_checkpoint: checkpoints/vq_gan/synt/testing/lightning_logs/version_9/checkpoints/epoch=6-step=21500-train/recon_loss=0.34.ckpt #~
 pretrained_checkpoint: ~
 max_steps: 80000
 max_epochs: -1

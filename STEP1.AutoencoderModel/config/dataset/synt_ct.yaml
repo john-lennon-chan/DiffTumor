@@ -22,4 +22,4 @@ num_samples: 2
 phase: train
 uniform_sample: False
 cache_dataset: True
-cache_rate: 0.001
+cache_rate: 0.005
