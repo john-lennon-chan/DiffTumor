@@ -158,7 +158,7 @@ class LoadImaged_BodyMap(MapTransform):
                 if meta_key in d and not self.overwriting:
                     raise KeyError(f"Metadata with key {meta_key} already exists and overwriting=False.")
                 d[meta_key] = data[1]
-        #d['label'], d['label_meta_dict'] = self.label_transfer(d['label'], d['image'].shape)
+        d['label'], d['label_meta_dict'] = self.label_transfer(d['label'], d['image'].shape)
         print(f"shape is {d['image'].shape}, label shape is {d['label'].shape}")
         return d
 
