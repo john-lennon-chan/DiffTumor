@@ -1,20 +1,20 @@
 name: synt
-image_channels: 1
+image_channels: 2 #1
 
-dataset_list: 'Step_1_datalist' #'AbdomenAtlas1.0Mini'
-data_root_path: D:\testing_AI_environment\DiffTumor_data\Autopet\imagesTr - Step 1 #..\AbdomenAtlas
-data_txt_path: D:\testing_AI_environment\DiffTumor_data\Autopet #cross_eval/recon/
+dataset_list: 'Step_1_datalist_train' #'AbdomenAtlas1.0Mini'
+data_root_path: ../../DiffTumor_data/Autopet/imagesTr_Step_1_channel_last #..\AbdomenAtlas
+data_txt_path: ../../DiffTumor_data/Autopet/ #D:\testing_AI_environment\DiffTumor_data\Autopet
 dist: False
-batch_size: 1 #2
-num_workers: 8
+batch_size: 2 #2
+num_workers: 16 #8
 
 a_min: -175 # -175
 a_max: 250 # 250
 b_min: -1.0
 b_max: 1.0
-space_x: 2.0 #1.0 in order for the cpu to work
-space_y: 2.0 #1.0
-space_z: 2.0 #1.0
+space_x: 1.0 #1.0 in order for the cpu to work
+space_y: 1.0 #1.0
+space_z: 1.0 #1.0
 roi_x: 96
 roi_y: 96
 roi_z: 96
@@ -22,4 +22,4 @@ num_samples: 2
 phase: train
 uniform_sample: False
 cache_dataset: True
-cache_rate: 0.005
+cache_rate: 0.5

@@ -1,5 +1,6 @@
 from monai.transforms import (
     AsDiscrete,
+    AsChannelFirstd,
     AddChanneld,
     Compose,
     CropForegroundd,
@@ -158,7 +159,7 @@ class LoadImaged_BodyMap(MapTransform):
                     raise KeyError(f"Metadata with key {meta_key} already exists and overwriting=False.")
                 d[meta_key] = data[1]
         d['label'], d['label_meta_dict'] = self.label_transfer(d['label'], d['image'].shape)
-        
+        print(f"shape is {d['image'].shape}, label shape is {d['label'].shape}")
         return d
 
     def label_transfer(self, lbl_dir, shape):
@@ -245,8 +246,8 @@ class LoadImageh5d(MapTransform):
 def get_loader(args):
     train_transforms = Compose(
         [
-            LoadImaged_BodyMap(keys=["image"]),
-            AddChanneld(keys=["image", "label"]),
+            LoadImaged_BodyMap(keys=["image"], ensure_channel_first=True),
+            #AsChannelFirstd(keys=["image", "label"]), #AddChanneld(keys=["image", "label"]), # just trying to see if 2 channels work
             Orientationd(keys=["image", "label"], axcodes="RAS"),
             Spacingd(
                 keys=["image", "label"],
@@ -284,7 +285,7 @@ def get_loader(args):
     val_transforms = Compose(
         [
             LoadImageh5d(keys=["image"]),
-            AddChanneld(keys=["image", "label"]),
+            #AddChanneld(keys=["image", "label"]), # just trying to see if 2 channels work
             Orientationd(keys=["image", "label"], axcodes="RAS"),
             Spacingd(
                 keys=["image", "label"],
