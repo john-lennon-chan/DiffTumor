@@ -2,7 +2,7 @@ name: synt
 image_channels: 2 #1
 
 dataset_list: 'Step_1_datalist_train' #'AbdomenAtlas1.0Mini'
-data_root_path: ../../DiffTumor_data/Autopet/imagesTr_Step_1_channel_last #..\AbdomenAtlas
+data_root_path: ../../DiffTumor_data/Autopet/imagesTr_Step_1_channel_first #..\AbdomenAtlas
 data_txt_path: ../../DiffTumor_data/Autopet/ #D:\testing_AI_environment\DiffTumor_data\Autopet
 dist: False
 batch_size: 2 #2

@@ -158,7 +158,7 @@ class LoadImaged_BodyMap(MapTransform):
                 if meta_key in d and not self.overwriting:
                     raise KeyError(f"Metadata with key {meta_key} already exists and overwriting=False.")
                 d[meta_key] = data[1]
-        d['label'], d['label_meta_dict'] = self.label_transfer(d['label'], d['image'].shape)
+        #d['label'], d['label_meta_dict'] = self.label_transfer(d['label'], d['image'].shape)
         print(f"shape is {d['image'].shape}, label shape is {d['label'].shape}")
         return d
 
@@ -321,7 +321,7 @@ def get_loader(args):
         train_name=[]
         for line in open(os.path.join(args.data_txt_path,  args.dataset_list+'.txt')):
             name = line.strip().split('\t')[0]
-            train_img.append(os.path.join(args.data_root_path, name + '/ct.nii.gz'))
+            train_img.append(os.path.join(args.data_root_path, name + 'ct.npy')) #'/ct.nii.gz'
             train_lbl.append(os.path.join(args.data_root_path, name + '/segmentations/'))
             train_name.append(name)
         data_dicts_train = [{'image': image, 'label': label, 'name': name}
