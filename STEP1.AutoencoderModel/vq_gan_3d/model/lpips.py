@@ -89,6 +89,14 @@ class LPIPS(nn.Module):
         return model
 
     def forward(self, input, target):
+        # Check if input and target have less than 3 channels
+        if input.shape[1] < 3:
+            # Repeat the first channel to make it up to 3 channels
+            input = torch.cat([input, input[:, :1, :, :]], dim=1)
+        if target.shape[1] < 3:
+            # Repeat the first channel to make it up to 3 channels
+            target = torch.cat([target, target[:, :1, :, :]], dim=1)
+
         in0_input, in1_input = (self.scaling_layer(
             input), self.scaling_layer(target))
         outs0, outs1 = self.net(in0_input), self.net(in1_input)

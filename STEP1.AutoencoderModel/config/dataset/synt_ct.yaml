@@ -2,14 +2,16 @@ name: synt
 image_channels: 2 #1
 
 dataset_list: 'Step_1_datalist_train' #'AbdomenAtlas1.0Mini'
-data_root_path: ../../DiffTumor_data/Autopet/imagesTr_Step_1_channel_first #..\AbdomenAtlas
+data_root_path: ../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct/ #..\AbdomenAtlas
 data_txt_path: ../../DiffTumor_data/Autopet/ #D:\testing_AI_environment\DiffTumor_data\Autopet
 dist: False
-batch_size: 2 #2
-num_workers: 16 #8
+batch_size: 1 #2
+num_workers: 1 #16
 
-a_min: -175 # -175
-a_max: 250 # 250
+ct_a_min: -832.062744140625 # -175
+ct_a_max: 1127.758544921875 # 250
+pet_a_min: 1.0433332920074463
+pet_a_max: 51.211158752441406
 b_min: -1.0
 b_max: 1.0
 space_x: 1.0 #1.0 in order for the cpu to work
@@ -21,5 +23,7 @@ roi_z: 96
 num_samples: 2
 phase: train
 uniform_sample: False
-cache_dataset: True
-cache_rate: 0.5
+cache_dataset: False
+cache_rate: 0.027 #0.05
+save_transform: True # saving the transforms and using them directly
+save_dir: ../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct_processed

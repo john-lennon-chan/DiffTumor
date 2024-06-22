@@ -85,7 +85,6 @@ class UniformDataset(Dataset):
         data_index = np.random.randint(self.datasetnum[set_index], size=1)[0]
         return self._transform(set_key, data_index)
 
-
 class UniformCacheDataset(CacheDataset):
     def __init__(self, data, transform, cache_rate, datasetkey):
         super().__init__(data=data, transform=transform, cache_rate=cache_rate)
@@ -354,6 +353,11 @@ def get_loader(args):
                 train_dataset = UniformDataset(data=data_dicts_train, transform=train_transforms, datasetkey=args.datasetkey)
             else:
                 train_dataset = Dataset(data=data_dicts_train, transform=train_transforms)
+        """
+        if args.save_transform:
+            train_dataset = DiskDataset(data=data_dicts_train, transform=train_transforms, save_dir=args.save_dir)
+        """
+
         train_sampler = DistributedSampler(dataset=train_dataset, even_divisible=True, shuffle=True) if args.dist else None
         # breakpoint()
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=args.num_workers, 
@@ -398,7 +402,9 @@ def get_key(name):
     return template_key
 
 if __name__ == "__main__":
+
     train_loader, test_loader = partial_label_dataloader()
     for index, item in enumerate(test_loader):
         print(item['image'].shape, item['label'].shape, item['task_id'])
         input()
+

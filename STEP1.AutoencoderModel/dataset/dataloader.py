@@ -3,6 +3,7 @@ from monai.transforms import (
     AsChannelFirstd,
     AddChanneld,
     Compose,
+    ConcatItemsd,
     CropForegroundd,
     LoadImaged,
     Orientationd,
@@ -41,6 +42,28 @@ from monai.utils import GridSamplePadMode, ensure_tuple, ensure_tuple_rep
 from monai.data.image_reader import ImageReader
 from monai.utils.enums import PostFix
 DEFAULT_POST_FIX = PostFix.meta()
+
+class DiskDataset(Dataset):
+    def __init__(self, data, transform=None, save_dir=None):
+        super().__init__(data, transform)
+        self.save_dir = save_dir
+        if self.save_dir is not None:
+            os.makedirs(self.save_dir, exist_ok=True)
+
+    def __getitem__(self, index):
+        filename = f"data_{index}.npz"
+        filepath = os.path.join(self.save_dir, filename)
+
+        if os.path.exists(filepath):
+            data = np.load(filepath)
+            data = torch.from_numpy(data)
+        else:
+            data = super().__getitem__(index)
+            if self.save_dir is not None:
+                np.save(filepath, data.numpy())
+
+        return data
+
 
 class UniformDataset(Dataset):
     def __init__(self, data, transform, datasetkey):
@@ -158,13 +181,14 @@ class LoadImaged_BodyMap(MapTransform):
                 if meta_key in d and not self.overwriting:
                     raise KeyError(f"Metadata with key {meta_key} already exists and overwriting=False.")
                 d[meta_key] = data[1]
-        d['label'], d['label_meta_dict'] = self.label_transfer(d['label'], d['image'].shape)
-        print(f"shape is {d['image'].shape}, label shape is {d['label'].shape}")
+        d['label'], d['label_meta_dict'] = self.label_transfer(d['label'], d['ct'].shape)
+        #print(f"shape is {d['ct'].shape}, label shape is {d['label'].shape}")
         return d
 
     def label_transfer(self, lbl_dir, shape):
         organ_lbl = np.zeros(shape)
-        
+
+        """
         if os.path.exists(lbl_dir + 'liver' + '.nii.gz'):
             array, mata_infomation = self._loader(lbl_dir + 'liver' + '.nii.gz')
             organ_lbl[array > 0] = 1
@@ -186,9 +210,10 @@ class LoadImaged_BodyMap(MapTransform):
         if os.path.exists(lbl_dir + 'pancreas_tumor' + '.nii.gz'):
             array, mata_infomation = self._loader(lbl_dir + 'kidney_tumor' + '.nii.gz')
             organ_lbl[array > 0] = 6
-        if os.path.exists(lbl_dir + 'tumour' + '.nii.gz'):
-            array, mata_infomation = self._loader(lbl_dir + 'tumour' + '.nii.gz')
-            organ_lbl[array > 0] = 7
+        """
+
+        if os.path.exists(lbl_dir + 'totalsegmentator' + '.nii.gz'):
+            organ_lbl, mata_infomation = self._loader(lbl_dir + 'totalsegmentator' + '.nii.gz')
 
         return organ_lbl, mata_infomation
 
@@ -246,22 +271,39 @@ class LoadImageh5d(MapTransform):
 def get_loader(args):
     train_transforms = Compose(
         [
-            LoadImaged_BodyMap(keys=["image"], ensure_channel_first=True),
-            #AsChannelFirstd(keys=["image", "label"]), #AddChanneld(keys=["image", "label"]), # just trying to see if 2 channels work
-            Orientationd(keys=["image", "label"], axcodes="RAS"),
+            LoadImaged_BodyMap(keys=["ct", "pet"]),
+            AddChanneld(keys=["ct", "pet", "label"]), # just trying to see if 2 channels work
+            Orientationd(keys=["ct", "pet", "label"], axcodes="RAS"),
             Spacingd(
-                keys=["image", "label"],
+                keys=["ct", "pet", "label"],
                 pixdim=(args.space_x, args.space_y, args.space_z),
-                mode=("bilinear", "nearest"),
+                mode=("bilinear", "bilinear", "nearest"),
             ), # process h5 to here
             ScaleIntensityRanged(
-                keys=["image"],
-                a_min=args.a_min,
-                a_max=args.a_max,
+                keys=["ct"],
+                a_min=args.ct_a_min,
+                a_max=args.ct_a_max,
                 b_min=args.b_min,
                 b_max=args.b_max,
-                clip=True,
+                clip=True
             ),
+            ScaleIntensityRanged(
+                keys=["pet"],
+                a_min=args.pet_a_min,
+                a_max=args.pet_a_max,
+                b_min=args.b_min,
+                b_max=args.b_max,
+                clip=True
+            ),
+            #ScaleIntensityRanged(
+            #    keys=["image"],
+            #    a_min=args.a_min,
+            #    a_max=args.a_max,
+            #    b_min=args.b_min,
+            #    b_max=args.b_max,
+            #    clip=True,
+            #),
+            ConcatItemsd(keys=["ct", "pet"], name="image", dim=0),
             SpatialPadd(keys=["image", "label"], spatial_size=(args.roi_x, args.roi_y, args.roi_z), mode=["minimum", "constant"]),
             RandCropByPosNegLabeld(
                 keys=["image", "label"],
@@ -284,22 +326,39 @@ def get_loader(args):
 
     val_transforms = Compose(
         [
-            LoadImageh5d(keys=["image"]),
-            #AddChanneld(keys=["image", "label"]), # just trying to see if 2 channels work
-            Orientationd(keys=["image", "label"], axcodes="RAS"),
+            LoadImageh5d(keys=["ct", "pet"]),
+            AddChanneld(keys=["ct", "pet", "label"]), # just trying to see if 2 channels work
+            Orientationd(keys=["ct", "pet", "label"], axcodes="RAS"),
             Spacingd(
-                keys=["image", "label"],
+                keys=["ct", "pet", "label"],
                 pixdim=(args.space_x, args.space_y, args.space_z),
-                mode=("bilinear", "nearest"),
-            ), 
+                mode=("bilinear", "bilinear", "nearest"),
+            ),
             ScaleIntensityRanged(
-                keys=["image"],
-                a_min=args.a_min,
-                a_max=args.a_max,
+                keys=["ct"],
+                a_min=args.ct_a_min,
+                a_max=args.ct_a_max,
                 b_min=args.b_min,
                 b_max=args.b_max,
-                clip=True,
+                clip=True
             ),
+            ScaleIntensityRanged(
+                keys=["pet"],
+                a_min=args.pet_a_min,
+                a_max=args.pet_a_max,
+                b_min=args.b_min,
+                b_max=args.b_max,
+                clip=True
+            ),
+            #ScaleIntensityRanged(
+            #    keys=["image"],
+            #    a_min=args.a_min,
+            #    a_max=args.a_max,
+            #    b_min=args.b_min,
+            #    b_max=args.b_max,
+            #    clip=True,
+            #),
+            ConcatItemsd(keys=["ct", "pet"], name="image", dim=0),
             SpatialPadd(keys=["image", "label"], spatial_size=(args.roi_x, args.roi_y, args.roi_z), mode='constant'),
             RandCropByPosNegLabeld(
                 keys=["image", "label"],
@@ -316,16 +375,18 @@ def get_loader(args):
     )
 
     if args.phase == 'train':        
-        train_img=[]
+        train_ct=[]
+        train_pet=[]
         train_lbl=[]
         train_name=[]
         for line in open(os.path.join(args.data_txt_path,  args.dataset_list+'.txt')):
             name = line.strip().split('\t')[0]
-            train_img.append(os.path.join(args.data_root_path, name + 'ct.npy')) #'/ct.nii.gz'
+            train_ct.append(os.path.join(args.data_root_path, name + '/ct.nii.gz'))
+            train_pet.append(os.path.join(args.data_root_path, name + '/pet.nii.gz'))
             train_lbl.append(os.path.join(args.data_root_path, name + '/segmentations/'))
             train_name.append(name)
-        data_dicts_train = [{'image': image, 'label': label, 'name': name}
-                    for image, label, name in zip(train_img, train_lbl, train_name)]
+        data_dicts_train = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
+                    for ct, pet, label, name in zip(train_ct, train_pet, train_lbl, train_name)]
         print('train len {}'.format(len(data_dicts_train)))
         # data_dicts_train=data_dicts_train[:10]
         # breakpoint()
@@ -340,6 +401,10 @@ def get_loader(args):
                 train_dataset = UniformDataset(data=data_dicts_train, transform=train_transforms, datasetkey=args.datasetkey)
             else:
                 train_dataset = Dataset(data=data_dicts_train, transform=train_transforms)
+
+        if args.save_transform:
+            train_dataset = DiskDataset(data=data_dicts_train, transform=train_transforms, save_dir=args.save_dir)
+
         train_sampler = DistributedSampler(dataset=train_dataset, even_divisible=True, shuffle=True) if args.dist else None
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=args.num_workers, 
                                     collate_fn=list_data_collate, sampler=train_sampler)
@@ -378,7 +443,36 @@ def get_key(name):
     return template_key
 
 if __name__ == "__main__":
+    """
     train_loader, test_loader = partial_label_dataloader()
     for index, item in enumerate(test_loader):
         print(item['image'].shape, item['label'].shape, item['task_id'])
+        input()
+    """
+    train_ct = []
+    train_pet = []
+    train_lbl = []
+    train_name = []
+    data_txt_path = "../../DiffTumor_data/Autopet/"
+    dataset_list = "Step_1_datalist_train"
+    data_root_path = "../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct/"
+    for line in open(os.path.join(data_txt_path, dataset_list + '.txt')):
+        name = line.strip().split('\t')[0]
+        train_ct.append(os.path.join(data_root_path, name + '/ct.nii.gz'))
+        train_pet.append(os.path.join(data_root_path, name + '/pet.nii.gz'))
+        train_lbl.append(os.path.join(data_root_path, name + '/segmentations/'))
+        train_name.append(name)
+    data_dicts_train = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
+                        for ct, pet, label, name in zip(train_ct, train_pet, train_lbl, train_name)]
+
+
+    train_dataset = DiskDataset(data=data_dicts_train, transform=train_transforms, save_dir=args.save_dir)
+
+    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=False,
+                              num_workers=8,
+                              collate_fn=list_data_collate)
+
+    for index, item in enumerate(train_loader):
+        print(item['ct'].shape, item['pet'].shape, item['label'].shape)
+        print(item['name'])
         input()

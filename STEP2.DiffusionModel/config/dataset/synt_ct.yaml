@@ -2,8 +2,8 @@ name: liver_tumor_train
 image_channels: 1
 fold: 0
 dataset_list: ['PET_CT_tumour_train']
-data_root_path: ../../DiffTumor_data/
-label_root_path: ../../DiffTumor_data/
+data_root_path: ../../DiffTumor_data/Autopet/
+label_root_path: ../../DiffTumor_data/Autopet/
 data_txt_path: ../../DiffTumor_data/Autopet/
 dist: False
 batch_size: 4
