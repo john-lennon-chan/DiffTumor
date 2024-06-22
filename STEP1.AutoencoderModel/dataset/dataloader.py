@@ -60,7 +60,12 @@ class DiskDataset(Dataset):
         else:
             data = super().__getitem__(index)
             if self.save_dir is not None:
-                np.save(filepath, data.numpy())
+                if isinstance(data, dict):
+                    data = {k: v.cpu().numpy() for k, v in data.items()}
+                else:
+                    data = [item.cpu().numpy() for item in data]
+
+                np.savez(filepath, data)
 
         return data
 
