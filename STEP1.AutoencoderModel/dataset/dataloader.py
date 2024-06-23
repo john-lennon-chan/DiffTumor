@@ -28,6 +28,7 @@ import numpy as np
 import torch
 from typing import IO, TYPE_CHECKING, Any, Callable, Dict, Hashable, List, Mapping, Optional, Sequence, Tuple, Union
 
+
 sys.path.append("..") 
 
 from torch.utils.data import Subset
@@ -51,18 +52,25 @@ class DiskDataset(Dataset):
             os.makedirs(self.save_dir, exist_ok=True)
 
     def __getitem__(self, index):
-        filename = f"data_{index}.pt"
+        filename = f"data_{index}.npz"
         filepath = os.path.join(self.save_dir, filename)
 
         try:
-            data = torch.load(filepath)
+            data = [{'image': arr} for arr in np.load(filepath).values()]
         except:
             data = super().__getitem__(index)
             if self.save_dir is not None:
                 try:
-                    torch.save(data, filepath)
-                except:
+                    np.savez_compressed(filepath, a = data[0], b = data[1])
+                except Exception as e:
+                    print(e)
                     print(f"failed to save {filepath}")
+
+        #print(f"Two data identical? {data[0]['image'] == data[1]['image']}")
+        #print(f"data type is {type(data)}")
+        #print(f"each element of that list is a {[type(i) for i in data]}")
+        #tobeprinted = {k: type(v) for k, v in data[0].items()}
+        #print(f"each element of the first element of that list is a {tobeprinted}")
 
         return data
 
@@ -376,42 +384,50 @@ def get_loader(args):
         ]
     )
 
-    if args.phase == 'train':        
-        train_ct=[]
-        train_pet=[]
-        train_lbl=[]
-        train_name=[]
-        for line in open(os.path.join(args.data_txt_path,  args.dataset_list+'.txt')):
+    if args.phase == 'train':
+        train_ct = []
+        train_pet = []
+        train_lbl = []
+        train_name = []
+        for line in open(os.path.join(args.data_txt_path, args.dataset_list + '.txt')):
             name = line.strip().split('\t')[0]
             train_ct.append(os.path.join(args.data_root_path, name + '/ct.nii.gz'))
             train_pet.append(os.path.join(args.data_root_path, name + '/pet.nii.gz'))
             train_lbl.append(os.path.join(args.data_root_path, name + '/segmentations/'))
             train_name.append(name)
         data_dicts_train = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
-                    for ct, pet, label, name in zip(train_ct, train_pet, train_lbl, train_name)]
+                            for ct, pet, label, name in zip(train_ct, train_pet, train_lbl, train_name)]
         print('train len {}'.format(len(data_dicts_train)))
         # data_dicts_train=data_dicts_train[:10]
         # breakpoint()
-    
+
         if args.cache_dataset:
             if args.uniform_sample:
-                train_dataset = UniformCacheDataset(data=data_dicts_train, transform=train_transforms, cache_rate=args.cache_rate, datasetkey=args.datasetkey)
+                train_dataset = UniformCacheDataset(data=data_dicts_train, transform=train_transforms,
+                                                    cache_rate=args.cache_rate, datasetkey=args.datasetkey)
             else:
-                train_dataset = CacheDataset(data=data_dicts_train, transform=train_transforms, cache_rate=args.cache_rate)
+                train_dataset = CacheDataset(data=data_dicts_train, transform=train_transforms,
+                                             cache_rate=args.cache_rate)
         else:
             if args.uniform_sample:
-                train_dataset = UniformDataset(data=data_dicts_train, transform=train_transforms, datasetkey=args.datasetkey)
+                train_dataset = UniformDataset(data=data_dicts_train, transform=train_transforms,
+                                               datasetkey=args.datasetkey)
             else:
                 train_dataset = Dataset(data=data_dicts_train, transform=train_transforms)
 
         if args.save_transform:
             train_dataset = DiskDataset(data=data_dicts_train, transform=train_transforms, save_dir=args.save_dir)
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False,
+                                      num_workers=args.num_workers,
+                                      collate_fn=list_data_collate, sampler=None)
 
-        train_sampler = DistributedSampler(dataset=train_dataset, even_divisible=True, shuffle=True) if args.dist else None
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=args.num_workers, 
-                                    collate_fn=list_data_collate, sampler=train_sampler)
-        return train_loader, train_sampler, len(train_dataset)    
-    
+        train_sampler = DistributedSampler(dataset=train_dataset, even_divisible=True,
+                                           shuffle=True) if args.dist else None
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+                                  num_workers=args.num_workers,
+                                  collate_fn=list_data_collate, sampler=train_sampler)
+        return train_loader, train_sampler, len(train_dataset)
+
     if args.phase == 'validation':
         val_img = []
         val_lbl = []
@@ -451,30 +467,51 @@ if __name__ == "__main__":
         print(item['image'].shape, item['label'].shape, item['task_id'])
         input()
     """
-    train_ct = []
-    train_pet = []
-    train_lbl = []
-    train_name = []
-    data_txt_path = "../../DiffTumor_data/Autopet/"
-    dataset_list = "Step_1_datalist_train"
-    data_root_path = "../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct/"
-    for line in open(os.path.join(data_txt_path, dataset_list + '.txt')):
-        name = line.strip().split('\t')[0]
-        train_ct.append(os.path.join(data_root_path, name + '/ct.nii.gz'))
-        train_pet.append(os.path.join(data_root_path, name + '/pet.nii.gz'))
-        train_lbl.append(os.path.join(data_root_path, name + '/segmentations/'))
-        train_name.append(name)
-    data_dicts_train = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
-                        for ct, pet, label, name in zip(train_ct, train_pet, train_lbl, train_name)]
 
 
-    train_dataset = DiskDataset(data=data_dicts_train, transform=train_transforms, save_dir=args.save_dir)
+    class Config:
+        def __init__(self):
+            self.name = "synt"
+            self.image_channels = 2
+            self.dataset_list = "Step_1_datalist_train"
+            self.data_root_path = "../../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct/"
+            self.data_txt_path = "../../../DiffTumor_data/Autopet/"
+            self.dist = False
+            self.batch_size = 1
+            self.num_workers = 4
+            self.ct_a_min = -832.062744140625
+            self.ct_a_max = 1127.758544921875
+            self.pet_a_min = 1.0433332920074463
+            self.pet_a_max = 51.211158752441406
+            self.b_min = -1.0
+            self.b_max = 1.0
+            self.space_x = 1.0
+            self.space_y = 1.0
+            self.space_z = 1.0
+            self.roi_x = 96
+            self.roi_y = 96
+            self.roi_z = 96
+            self.num_samples = 2
+            self.phase = "train"
+            self.uniform_sample = False
+            self.cache_dataset = False
+            self.cache_rate = 0.027
+            self.save_transform = True
+            self.save_dir = "../../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct_processed"
 
-    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=False,
-                              num_workers=8,
-                              collate_fn=list_data_collate)
 
-    for index, item in enumerate(train_loader):
-        print(item['ct'].shape, item['pet'].shape, item['label'].shape)
-        print(item['name'])
-        input()
+    # Usage
+    config = Config()
+    print(config.name)  # Outputs: "synt"
+
+    #print(config)
+
+    train_loader, _, length = get_loader(config)
+
+    from tqdm import tqdm
+
+
+    for item in tqdm(train_loader, total=len(train_loader)):
+        pass
+        #print(item['image'].shape)
+        #input()
