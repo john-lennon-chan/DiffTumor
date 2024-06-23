@@ -7,7 +7,7 @@ label_root_path: ../../DiffTumor_data/Autopet/
 data_txt_path: ../../DiffTumor_data/Autopet/
 dist: False
 batch_size: 4
-num_workers: 1 # should be 8, but reduced so that no error comes out
+num_workers: 0 # should be 8, but reduced so that no error comes out
 
 a_min: -175
 a_max: 250

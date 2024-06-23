@@ -51,21 +51,18 @@ class DiskDataset(Dataset):
             os.makedirs(self.save_dir, exist_ok=True)
 
     def __getitem__(self, index):
-        filename = f"data_{index}.npz"
+        filename = f"data_{index}.pt"
         filepath = os.path.join(self.save_dir, filename)
 
-        if os.path.exists(filepath):
-            data = np.load(filepath)
-            data = torch.from_numpy(data)
-        else:
+        try:
+            data = torch.load(filepath)
+        except:
             data = super().__getitem__(index)
             if self.save_dir is not None:
-                if isinstance(data, dict):
-                    data = {k: v.cpu().numpy() for k, v in data.items()}
-                else:
-                    data = [item.cpu().numpy() for item in data]
-
-                np.savez(filepath, data)
+                try:
+                    torch.save(data, filepath)
+                except:
+                    print(f"failed to save {filepath}")
 
         return data
 
