@@ -33,13 +33,16 @@ class ImageLogger(Callback):
         #std = images.pop('std_org')
         #std = std[(None,)*3].swapaxes(0, -1)
         for k in images:
+            #print(f"Image shape: {images[k].shape}")
+            images[k] = images[k][0, 0, :, :]  # Select only the first channel, and the first image
             images[k] = (images[k] + 1.0) * 127.5  # std + mean
             torch.clamp(images[k], 0, 255)
             grid = torchvision.utils.make_grid(images[k], nrow=4)
             grid = grid
             grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
             grid = grid.numpy()
-            grid = (grid).astype(np.uint8)
+            #print(f"Grid shape: {grid.shape}")
+            grid = grid.astype(np.uint8)
             filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(
                 k,
                 global_step,

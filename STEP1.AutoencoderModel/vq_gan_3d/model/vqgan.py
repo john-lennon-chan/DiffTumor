@@ -282,6 +282,7 @@ class VQGAN(pl.LightningModule):
     def log_images(self, batch, **kwargs):
         log = dict()
         x = batch['image']
+        #print(f"image shape is {x.shape}")
         x = x.permute(0,1,-1,-3,-2).detach()
         x = x.to(self.device)
         frames, frames_rec, _, _ = self(x, log_image=True)

@@ -22,6 +22,7 @@ def get_parameter_number(model):
 
 @hydra.main(config_path='config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig, args=None):
+
     pl.seed_everything(cfg.model.seed)
 
     train_dataloader, _, _ = get_loader(cfg.dataset)
@@ -37,10 +38,10 @@ def run(cfg: DictConfig, args=None):
 
     model = VQGAN(cfg)
     get_parameter_number(model)
-    save_step = 500
+    save_step = 500 # 500
     callbacks = []
-    callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
-                     save_top_k=3, mode='min', filename='latest_checkpoint'))
+    #callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
+    #                 save_top_k=3, mode='min', filename='latest_checkpoint'))
     callbacks.append(ModelCheckpoint(every_n_train_steps=save_step,
                      save_top_k=-1, filename='{epoch}-{step}-{train/recon_loss:.2f}'))
     callbacks.append(ModelCheckpoint(every_n_train_steps=1000, save_top_k=-1,
@@ -72,8 +73,17 @@ def run(cfg: DictConfig, args=None):
         print('load pretrained model:', cfg.model.pretrained_checkpoint)
     
     accelerator = None
-    if cfg.model.gpus > 1:
-        accelerator = 'ddp'
+    if isinstance(cfg.model.gpus, list):
+        if len(cfg.model.gpus) > 1:
+            accelerator = 'ddp'
+        else:
+            pass
+            # handle single GPU
+    else:
+        pass
+        # handle single GPU
+    #if cfg.model.gpus > 1:
+    #    accelerator = 'ddp'
 
     trainer = pl.Trainer(
         gpus=cfg.model.gpus,

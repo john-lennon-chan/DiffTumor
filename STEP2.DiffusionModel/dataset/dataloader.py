@@ -335,8 +335,8 @@ def get_loader(args):
         for item in args.dataset_list:
             for line in open(os.path.join(args.data_txt_path,  item, 'real_tumor_train_{}.txt'.format(args.fold))):
                 name = line.strip().split()[1].split('.')[0]
-                train_img.append(args.data_root_path + line.strip().split()[0])
-                train_lbl.append(args.label_root_path + line.strip().split()[1])
+                train_img.append(args.data_root_path + line[:100].strip()) #.split(" ")[0]
+                train_lbl.append(args.label_root_path + line[100:].strip()) #.split("  ")[1]
                 train_name.append(name)
         data_dicts_train = [{'image': image, 'label': label, 'name': name}
                 for image, label, name in zip(train_img, train_lbl, train_name)]

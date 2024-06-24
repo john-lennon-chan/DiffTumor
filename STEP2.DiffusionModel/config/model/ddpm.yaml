@@ -25,4 +25,4 @@ gradient_accumulate_every: 2 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
 num_sample_rows: 1
-gpus: 0
+gpus: 1

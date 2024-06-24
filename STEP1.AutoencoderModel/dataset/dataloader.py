@@ -34,6 +34,7 @@ sys.path.append("..")
 from torch.utils.data import Subset
 
 from monai.data import DataLoader, Dataset, list_data_collate, DistributedSampler, CacheDataset
+from monai.data.utils import pad_list_data_collate
 from monai.config import DtypeLike, KeysCollection
 from monai.transforms.transform import Transform, MapTransform
 from monai.utils.enums import TransformBackends
@@ -52,16 +53,18 @@ class DiskDataset(Dataset):
             os.makedirs(self.save_dir, exist_ok=True)
 
     def __getitem__(self, index):
+        #print(f"processing file {index}")
         filename = f"data_{index}.npz"
         filepath = os.path.join(self.save_dir, filename)
 
         try:
-            data = [{'image': arr} for arr in np.load(filepath).values()]
+            loaded = np.load(filepath)
+            data = [{'image': arr} for arr in loaded.values()]
         except:
             data = super().__getitem__(index)
             if self.save_dir is not None:
                 try:
-                    np.savez_compressed(filepath, a = data[0], b = data[1])
+                    np.savez_compressed(filepath, a = data[0]['image'], b = data[1]['image'])
                 except Exception as e:
                     print(e)
                     print(f"failed to save {filepath}")
@@ -71,6 +74,7 @@ class DiskDataset(Dataset):
         #print(f"each element of that list is a {[type(i) for i in data]}")
         #tobeprinted = {k: type(v) for k, v in data[0].items()}
         #print(f"each element of the first element of that list is a {tobeprinted}")
+
 
         return data
 
@@ -276,6 +280,8 @@ class LoadImageh5d(MapTransform):
                     raise KeyError(f"Metadata with key {meta_key} already exists and overwriting=False.")
                 d[meta_key] = data[1]
 
+        #print(f"d is {d}")
+
         return d
     
 def get_loader(args):
@@ -336,7 +342,7 @@ def get_loader(args):
 
     val_transforms = Compose(
         [
-            LoadImageh5d(keys=["ct", "pet"]),
+            LoadImageh5d(keys=["ct", "pet"]), # just temporarily
             AddChanneld(keys=["ct", "pet", "label"]), # just trying to see if 2 channels work
             Orientationd(keys=["ct", "pet", "label"], axcodes="RAS"),
             Spacingd(
@@ -417,9 +423,13 @@ def get_loader(args):
 
         if args.save_transform:
             train_dataset = DiskDataset(data=data_dicts_train, transform=train_transforms, save_dir=args.save_dir)
-            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False,
+            train_sampler = DistributedSampler(dataset=train_dataset, even_divisible=True,
+                                               shuffle=True) if args.dist else None
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
                                       num_workers=args.num_workers,
-                                      collate_fn=list_data_collate, sampler=None)
+                                      collate_fn=list_data_collate, sampler=train_sampler) # should change collate back to
+            # list_data_collate if you want to do batch size = 2, but trying pad_list_data_collate now
+            return train_loader, train_sampler, len(train_dataset)
 
         train_sampler = DistributedSampler(dataset=train_dataset, even_divisible=True,
                                            shuffle=True) if args.dist else None
@@ -429,23 +439,39 @@ def get_loader(args):
         return train_loader, train_sampler, len(train_dataset)
 
     if args.phase == 'validation':
-        val_img = []
+        val_ct = []
+        val_pet = []
         val_lbl = []
         val_name = []
-        for item in args.dataset_list:
-            for line in open(os.path.join(args.data_txt_path,  item, 'real_tumor_val_0.txt')):
-                name = line.strip().split()[1].split('.')[0]
-                val_img.append(os.path.join(args.data_root_path, line.strip().split()[0]))
-                val_lbl.append(os.path.join(args.data_root_path, line.strip().split()[1]))
-                val_name.append(name)
-        data_dicts_val = [{'image': image, 'label': label, 'name': name}
-                    for image, label, name in zip(val_img, val_lbl, val_name)]
+        for line in open(os.path.join(args.data_txt_path, args.dataset_val_list + '.txt')):
+            name = line.strip().split('\t')[0]
+            val_ct.append(os.path.join(args.data_root_path, name + '/ct.nii.gz'))
+            val_pet.append(os.path.join(args.data_root_path, name + '/pet.nii.gz'))
+            val_lbl.append(os.path.join(args.data_root_path, name + '/segmentations/'))
+            val_name.append(name)
+        # item in args.dataset_list:
+        #    for line in open(os.path.join(args.data_txt_path,  item, 'real_tumor_val_0.txt')):
+        #        name = line.strip().split()[1].split('.')[0]
+        #        val_img.append(os.path.join(args.data_root_path, line.strip().split()[0]))
+        #        val_lbl.append(os.path.join(args.data_root_path, line.strip().split()[1]))
+        #        val_name.append(name)
+        data_dicts_val = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
+                    for ct, pet, label, name in zip(val_ct, val_pet, val_lbl, val_name)]
         print('val len {}'.format(len(data_dicts_val)))
     
         if args.cache_dataset:
             val_dataset = CacheDataset(data=data_dicts_val, transform=val_transforms, cache_rate=args.cache_rate)
         else:
             val_dataset = Dataset(data=data_dicts_val, transform=val_transforms)
+
+        if args.save_transform:
+            val_dataset = DiskDataset(data=data_dicts_val, transform=val_transforms, save_dir=args.save_dir_val)
+            val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False,
+                                      num_workers=args.num_workers,
+                                      collate_fn=list_data_collate) # should change collate back to
+            # list_data_collate if you want to do batch size = 2, but trying pad_list_data_collate now
+            return val_loader, val_transforms, len(val_dataset)
+
         val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=list_data_collate)
         return val_loader, val_transforms, len(val_dataset)
     
@@ -478,7 +504,7 @@ if __name__ == "__main__":
             self.data_txt_path = "../../../DiffTumor_data/Autopet/"
             self.dist = False
             self.batch_size = 1
-            self.num_workers = 4
+            self.num_workers = 0
             self.ct_a_min = -832.062744140625
             self.ct_a_max = 1127.758544921875
             self.pet_a_min = 1.0433332920074463
@@ -492,12 +518,14 @@ if __name__ == "__main__":
             self.roi_y = 96
             self.roi_z = 96
             self.num_samples = 2
-            self.phase = "train"
+            self.phase = "validation"
             self.uniform_sample = False
             self.cache_dataset = False
             self.cache_rate = 0.027
             self.save_transform = True
             self.save_dir = "../../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct_processed"
+            self.dataset_val_list = "Step_1_datalist_val"
+            self.save_dir_val = "../../../DiffTumor_data/Autopet/imagesTs_Step_1_pet_ct_processed"
 
 
     # Usage
@@ -506,12 +534,10 @@ if __name__ == "__main__":
 
     #print(config)
 
-    train_loader, _, length = get_loader(config)
+    val_loader, _, length = get_loader(config)
 
     from tqdm import tqdm
 
-
-    for item in tqdm(train_loader, total=len(train_loader)):
+    for item in tqdm(val_loader, total=len(val_loader)):
         pass
-        #print(item['image'].shape)
-        #input()
+
