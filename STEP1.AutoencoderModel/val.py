@@ -20,15 +20,12 @@ def get_parameter_number(model):
     return {'Total': total_num, 'Trainable': trainable_num}
 
 
-@hydra.main(config_path='config', config_name='base_cfg', version_base=None)
+@hydra.main(config_path='config', config_name='base_val_cfg', version_base=None)
 def run(cfg: DictConfig, args=None):
 
     pl.seed_everything(cfg.model.seed)
 
-    train_dataloader, _, _ = get_loader(cfg.dataset)
-    cfg.dataset.phase = "validation"
     val_dataloader, _, _ = get_loader(cfg.dataset)
-    cfg.dataset.phase = "train"
 
     # automatically adjust learning rate
     base_lr = cfg.model.lr
@@ -70,10 +67,8 @@ def run(cfg: DictConfig, args=None):
                     log_folder = 'version_'+str(version_id_used+1)
             if len(log_folder) > 0:
                 ckpt_folder = os.path.join(base_dir, log_folder, 'checkpoints')
-    if not cfg.model.pretrained_checkpoint is None:
 
-        model.load_from_checkpoint(cfg.model.pretrained_checkpoint)
-        print('load pretrained model:', cfg.model.pretrained_checkpoint)
+    val_checkpoints = [""]
     
     accelerator = None
     if isinstance(cfg.model.gpus, list):
@@ -101,7 +96,9 @@ def run(cfg: DictConfig, args=None):
         accelerator=accelerator,
     )
 
-    trainer.fit(model, train_dataloader, val_dataloader)
+    #trainer.fit(model, train_dataloader, val_dataloader)
+
+    trainer.validate(model=model, dataloaders=val_dataloader)
 
 
 if __name__ == '__main__':

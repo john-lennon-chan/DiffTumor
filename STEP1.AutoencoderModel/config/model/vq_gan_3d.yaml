@@ -4,10 +4,10 @@ num_workers: 8
 gpus: [2, 3, 4, 5]
 accumulate_grad_batches: 2 #1
 default_root_dir: checkpoints/vq_gan/
-default_root_dir_postfix: AutoPET # testing # '8k_96_d4_steplr'
-resume: False #True
-resume_version: 7
-resume_from_checkpoint: checkpoints/vq_gan/synt/AutoPET/lightning_logs/version_7/checkpoints/epoch=41-step=9000-train/recon_loss=0.30.ckpt #checkpoints/vq_gan/synt/testing/lightning_logs/version_9/checkpoints/epoch=6-step=21500-train/recon_loss=0.34.ckpt #~
+default_root_dir_postfix: AutoPET_with_val # testing # '8k_96_d4_steplr'
+resume: False
+resume_version: 0
+resume_from_checkpoint: ~ #checkpoints/vq_gan/synt/AutoPET/lightning_logs/version_7/checkpoints/epoch=41-step=9000-train/recon_loss=0.30.ckpt #checkpoints/vq_gan/synt/testing/lightning_logs/version_9/checkpoints/epoch=6-step=21500-train/recon_loss=0.34.ckpt #~
 pretrained_checkpoint: ../../DiffTumor_data/AutoencoderModel.ckpt #~
 max_steps: 100000 #160000 #80000
 max_epochs: -1

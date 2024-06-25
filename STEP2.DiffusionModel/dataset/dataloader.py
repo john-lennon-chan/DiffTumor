@@ -2,6 +2,7 @@ from monai.transforms import (
     AsDiscrete,
     AddChanneld,
     Compose,
+    ConcatItemsd,
     CropForegroundd,
     LoadImaged,
     Orientationd,
@@ -51,6 +52,39 @@ from monai.utils import GridSamplePadMode, ensure_tuple, ensure_tuple_rep
 from monai.data.image_reader import ImageReader
 from monai.utils.enums import PostFix
 DEFAULT_POST_FIX = PostFix.meta()
+
+class DiskDataset(Dataset):
+    def __init__(self, data, transform=None, save_dir=None):
+        super().__init__(data, transform)
+        self.save_dir = save_dir
+        if self.save_dir is not None:
+            os.makedirs(self.save_dir, exist_ok=True)
+
+    def __getitem__(self, index):
+        #print(f"processing file {index}")
+        filename = f"data_{index}.npz"
+        filepath = os.path.join(self.save_dir, filename)
+
+        try:
+            loaded = np.load(filepath)
+            data = [{'image': arr} for arr in loaded.values()]
+        except:
+            data = super().__getitem__(index)
+            if self.save_dir is not None:
+                try:
+                    np.savez_compressed(filepath, a = data[0]['image'], b = data[1]['image'])
+                except Exception as e:
+                    print(e)
+                    print(f"failed to save {filepath}")
+
+        #print(f"Two data identical? {data[0]['image'] == data[1]['image']}")
+        #print(f"data type is {type(data)}")
+        #print(f"each element of that list is a {[type(i) for i in data]}")
+        #tobeprinted = {k: type(v) for k, v in data[0].items()}
+        #print(f"each element of the first element of that list is a {tobeprinted}")
+
+
+        return data
 
 class UniformDataset(Dataset):
     def __init__(self, data, transform, datasetkey):
@@ -224,22 +258,39 @@ class Compose_Select(Compose):
 def get_loader(args):
     train_transforms = Compose(
         [
-            LoadImageh5d(keys=["image", "label"]), #0
-            AddChanneld(keys=["image", "label"]),
-            Orientationd(keys=["image", "label"], axcodes="RAS"),
+            LoadImageh5d(keys=["ct", "pet", "label"]), #0
+            AddChanneld(keys=["ct", "pet", "label"]),
+            Orientationd(keys=["ct", "pet", "label"], axcodes="RAS"),
             Spacingd(
-                keys=["image", "label"],
+                keys=["ct", "pet", "label"],
                 pixdim=(args.space_x, args.space_y, args.space_z),
-                mode=("bilinear", "nearest"),
+                mode=("bilinear", "bilinear", "nearest"),
             ), # process h5 to here
             ScaleIntensityRanged(
-                keys=["image"],
-                a_min=args.a_min,
-                a_max=args.a_max,
+                keys=["ct"],
+                a_min=args.ct_a_min,
+                a_max=args.ct_a_max,
                 b_min=args.b_min,
                 b_max=args.b_max,
-                clip=True,
+                clip=True
             ),
+            ScaleIntensityRanged(
+                keys=["pet"],
+                a_min=args.pet_a_min,
+                a_max=args.pet_a_max,
+                b_min=args.b_min,
+                b_max=args.b_max,
+                clip=True
+            ),
+            ConcatItemsd(keys=["ct", "pet"], name="image", dim=0),
+            #ScaleIntensityRanged(
+            #    keys=["image"],
+            #    a_min=args.a_min,
+            #    a_max=args.a_max,
+            #    b_min=args.b_min,
+            #    b_max=args.b_max,
+            #    clip=True,
+            #),
             # CropForegroundd(keys=["image", "label"], source_key="image"),
             SpatialPadd(keys=["image", "label"], spatial_size=(args.roi_x, args.roi_y, args.roi_z), mode='constant'),
             # RandZoomd_select(keys=["image", "label"], prob=0.3, min_zoom=1.3, max_zoom=1.5, mode=['area', 'nearest']), # 7
@@ -279,24 +330,33 @@ def get_loader(args):
 
     val_transforms = Compose(
         [
-            LoadImageh5d(keys=["image", "label"]),
-            AddChanneld(keys=["image", "label"]),
-            Orientationd(keys=["image", "label"], axcodes="RAS"),
+            LoadImageh5d(keys=["ct", "pet", "label"]),
+            AddChanneld(keys=["ct", "pet", "label"]),
+            Orientationd(keys=["ct", "pet", "label"], axcodes="RAS"),
             # ToTemplatelabeld(keys=['label']),
             # RL_Splitd(keys=['label']),
             Spacingd(
-                keys=["image", "label"],
+                keys=["ct", "pet", "label"],
                 pixdim=(args.space_x, args.space_y, args.space_z),
                 mode=("bilinear", "nearest"),
             ), # process h5 to here
             ScaleIntensityRanged(
-                keys=["image"],
-                a_min=args.a_min,
-                a_max=args.a_max,
+                keys=["ct"],
+                a_min=args.ct_a_min,
+                a_max=args.ct_a_max,
                 b_min=args.b_min,
                 b_max=args.b_max,
-                clip=True,
+                clip=True
             ),
+            ScaleIntensityRanged(
+                keys=["pet"],
+                a_min=args.pet_a_min,
+                a_max=args.pet_a_max,
+                b_min=args.b_min,
+                b_max=args.b_max,
+                clip=True
+            ),
+            ConcatItemsd(keys=["ct", "pet"], name="image", dim=0),
             CropForegroundd(keys=["image", "label"], source_key="image"),
             # RandCropByPosNegLabeld_select(
             #     keys=["image", "label"],
@@ -328,18 +388,20 @@ def get_loader(args):
     # breakpoint()
     if args.phase == 'train':
         ## training dict part
-        train_img = []
+        train_ct = []
+        train_pet = []
         train_lbl = []
         train_name = []
 
         for item in args.dataset_list:
             for line in open(os.path.join(args.data_txt_path,  item, 'real_tumor_train_{}.txt'.format(args.fold))):
-                name = line.strip().split()[1].split('.')[0]
-                train_img.append(args.data_root_path + line[:100].strip()) #.split(" ")[0]
-                train_lbl.append(args.label_root_path + line[100:].strip()) #.split("  ")[1]
+                name = line[200:].strip().split('.')[0]
+                train_ct.append(args.data_root_path + line[:100].strip()) #.split(" ")[0]
+                train_pet.append(args.data_root_path + line[100:200].strip()) #.split(" ")[0]
+                train_lbl.append(args.label_root_path + line[200:].strip()) #.split("  ")[1]
                 train_name.append(name)
-        data_dicts_train = [{'image': image, 'label': label, 'name': name}
-                for image, label, name in zip(train_img, train_lbl, train_name)]
+        data_dicts_train = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
+                for ct, pet, label, name in zip(train_ct, train_pet, train_lbl, train_name)]
         # data_dicts_train=data_dicts_train[:3]
         print('train len {}'.format(len(data_dicts_train)))
 
@@ -353,10 +415,12 @@ def get_loader(args):
                 train_dataset = UniformDataset(data=data_dicts_train, transform=train_transforms, datasetkey=args.datasetkey)
             else:
                 train_dataset = Dataset(data=data_dicts_train, transform=train_transforms)
-        """
+
         if args.save_transform:
             train_dataset = DiskDataset(data=data_dicts_train, transform=train_transforms, save_dir=args.save_dir)
-        """
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False,
+                                      num_workers=args.num_workers, collate_fn=list_data_collate)
+
 
         train_sampler = DistributedSampler(dataset=train_dataset, even_divisible=True, shuffle=True) if args.dist else None
         # breakpoint()
@@ -368,23 +432,30 @@ def get_loader(args):
     
     if args.phase == 'validation':
         ## validation dict part
-        val_img = []
+        val_ct = []
+        val_pet = []
         val_lbl = []
         val_name = []
         for item in args.dataset_list:
             for line in open(os.path.join(args.data_txt_path,  item, 'real_huge_train_0.txt')):
-                name = line.strip().split()[1].split('.')[0]
-                val_img.append(args.data_root_path + line.strip().split()[0])
-                val_lbl.append(args.data_root_path + line.strip().split()[1])
+                name = line[200:].strip().split('.')[0]
+                val_ct.append(args.data_root_path + line[:100].strip()) # line.strip().split()[0]
+                val_pet.append(args.data_root_path + line[100:200].strip())
+                val_lbl.append(args.data_root_path + line[200:].strip()) # line.strip().split()[1]
                 val_name.append(name)
-        data_dicts_val = [{'image': image, 'label': label, 'name': name}
-                    for image, label, name in zip(val_img, val_lbl, val_name)]
+        data_dicts_val = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
+                    for ct, pet, label, name in zip(val_ct, val_pet, val_lbl, val_name)]
         print('val len {}'.format(len(data_dicts_val)))
 
         if args.cache_dataset:
             val_dataset = CacheDataset(data=data_dicts_val, transform=val_transforms, cache_rate=args.cache_rate)
         else:
             val_dataset = Dataset(data=data_dicts_val, transform=val_transforms)
+
+        if args.save_dir_val:
+            val_dataset = DiskDataset(data=data_dicts_val, transform=val_transforms, save_dir=args.save_dir_val)
+            val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=list_data_collate)
+
         val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=list_data_collate)
         return val_loader, val_transforms, len(val_dataset)
         # return val_loader

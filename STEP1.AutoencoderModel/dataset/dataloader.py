@@ -443,18 +443,18 @@ def get_loader(args):
         val_pet = []
         val_lbl = []
         val_name = []
-        for line in open(os.path.join(args.data_txt_path, args.dataset_val_list + '.txt')):
-            name = line.strip().split('\t')[0]
-            val_ct.append(os.path.join(args.data_root_path, name + '/ct.nii.gz'))
-            val_pet.append(os.path.join(args.data_root_path, name + '/pet.nii.gz'))
-            val_lbl.append(os.path.join(args.data_root_path, name + '/segmentations/'))
-            val_name.append(name)
-        # item in args.dataset_list:
-        #    for line in open(os.path.join(args.data_txt_path,  item, 'real_tumor_val_0.txt')):
-        #        name = line.strip().split()[1].split('.')[0]
-        #        val_img.append(os.path.join(args.data_root_path, line.strip().split()[0]))
-        #        val_lbl.append(os.path.join(args.data_root_path, line.strip().split()[1]))
-        #        val_name.append(name)
+        #for line in open(os.path.join(args.data_txt_path, args.dataset_val_list + '.txt')):
+        #    name = line.strip().split('\t')[0]
+        #    val_ct.append(os.path.join(args.data_root_path, name + '/ct.nii.gz'))
+        #    val_pet.append(os.path.join(args.data_root_path, name + '/pet.nii.gz'))
+        #    val_lbl.append(os.path.join(args.data_root_path, name + '/segmentations/'))
+        #    val_name.append(name)
+        for item in args.dataset_list:
+            for line in open(os.path.join(args.data_txt_path,  item, 'real_tumor_val_0.txt')):
+                name = line.strip().split()[1].split('.')[0]
+                val_img.append(os.path.join(args.data_root_path, line.strip().split()[0]))
+                val_lbl.append(os.path.join(args.data_root_path, line.strip().split()[1]))
+                val_name.append(name)
         data_dicts_val = [{'ct': ct, 'pet': pet, 'label': label, 'name': name}
                     for ct, pet, label, name in zip(val_ct, val_pet, val_lbl, val_name)]
         print('val len {}'.format(len(data_dicts_val)))

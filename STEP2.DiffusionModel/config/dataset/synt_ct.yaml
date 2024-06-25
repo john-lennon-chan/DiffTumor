@@ -25,3 +25,5 @@ uniform_sample: False
 datasetkey: ['10_03']
 cache_dataset: True
 cache_rate: 0.001 #1
+save_dir: ../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct_processed
+save_dir_val: ../../DiffTumor_data/Autopet/imagesTs_Step_1_pet_ct_processed
