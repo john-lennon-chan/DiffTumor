@@ -338,7 +338,7 @@ def get_loader(args):
             Spacingd(
                 keys=["ct", "pet", "label"],
                 pixdim=(args.space_x, args.space_y, args.space_z),
-                mode=("bilinear", "nearest"),
+                mode=("bilinear", "bilinear", "nearest"),
             ), # process h5 to here
             ScaleIntensityRanged(
                 keys=["ct"],
@@ -452,7 +452,7 @@ def get_loader(args):
         else:
             val_dataset = Dataset(data=data_dicts_val, transform=val_transforms)
 
-        if args.save_dir_val:
+        if args.save_transform_val:
             val_dataset = DiskDataset(data=data_dicts_val, transform=val_transforms, save_dir=args.save_dir_val)
             val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=list_data_collate)
 
@@ -474,8 +474,61 @@ def get_key(name):
 
 if __name__ == "__main__":
 
+
+    """
     train_loader, test_loader = partial_label_dataloader()
     for index, item in enumerate(test_loader):
         print(item['image'].shape, item['label'].shape, item['task_id'])
         input()
+    """
+
+    class Config:
+        def __init__(self):
+            self.name = "liver_tumor_train"
+            self.image_channels = 1
+            self.fold = 0
+            self.dataset_list = ['PET_CT_tumour_train']
+            self.data_root_path = "../../../DiffTumor_data/Autopet/"
+            self.label_root_path = "../../../DiffTumor_data/Autopet/"
+            self.data_txt_path = "../../../DiffTumor_data/Autopet/"
+            self.dist = False
+            self.batch_size = 12
+            self.num_workers = 0
+            self.ct_a_min = -832.062744140625
+            self.ct_a_max = 1127.758544921875
+            self.pet_a_min = 1.0433332920074463
+            self.pet_a_max = 51.211158752441406
+            self.b_min = -1.0
+            self.b_max = 1.0
+            self.space_x = 1.0
+            self.space_y = 1.0
+            self.space_z = 1.0
+            self.roi_x = 96
+            self.roi_y = 96
+            self.roi_z = 96
+            self.num_samples = 10
+            self.phase = "train"
+            self.uniform_sample = False
+            self.datasetkey = ['10_03']
+            self.cache_dataset = False
+            self.cache_rate = 0.001
+            self.save_transform = True
+            self.save_transform_val = True
+            self.save_dir = "../../../DiffTumor_data/Autopet/imagesTr_Step_2_pet_ct_processed"
+            self.save_dir_val = "../../../DiffTumor_data/Autopet/imagesTs_Step_2_pet_ct_processed"
+
+
+
+    # Usage
+    config = Config()
+    print(config.name)  # Outputs: "synt"
+
+    #print(config)
+
+    train_loader, _, length = get_loader(config)
+
+    from tqdm import tqdm
+
+    for item in tqdm(train_loader, total=len(train_loader)):
+        pass
 
