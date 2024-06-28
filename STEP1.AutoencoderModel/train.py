@@ -40,6 +40,7 @@ def run(cfg: DictConfig, args=None):
 
     model = VQGAN(cfg)
     get_parameter_number(model)
+
     save_step = 500 # 500
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor='val/recon_loss',

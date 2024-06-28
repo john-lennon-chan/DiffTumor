@@ -815,10 +815,10 @@ class GaussianDiffusion(nn.Module):
 
         return loss
 
-    def forward(self, x, *args, **kwargs):
-        bs = int(x.shape[0]/2)
-        img=x[:bs,...]
-        mask=x[bs:,...]
+    def forward(self, img, mask, *args, **kwargs):
+        #bs = int(x.shape[0]/2)
+        #img=x[:bs,...]
+        #mask=x[bs:,...]
         mask_=(1-mask).detach()
         masked_img = (img*mask_).detach()
         masked_img=masked_img.permute(0,1,-1,-3,-2)
@@ -980,11 +980,12 @@ class Trainer(object):
                 mask[mask==1]=0
                 mask[mask==2]=1
 
-                input_data = torch.cat([image, mask], dim=0)
+                #input_data = torch.cat([image, mask], dim=0)
 
                 with autocast(enabled=self.amp):
                     loss = self.model(
-                        input_data,
+                        image,
+                        mask,
                         prob_focus_present=prob_focus_present,
                         focus_present_mask=focus_present_mask
                     )

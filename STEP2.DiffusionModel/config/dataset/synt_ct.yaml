@@ -1,12 +1,12 @@
 name: liver_tumor_train
-image_channels: 1
+image_channels: 2 # 1
 fold: 0
 dataset_list: ['PET_CT_tumour_train']
 data_root_path: ../../DiffTumor_data/Autopet/
 label_root_path: ../../DiffTumor_data/Autopet/
 data_txt_path: ../../DiffTumor_data/Autopet/
 dist: False
-batch_size: 4
+batch_size: 10 #4
 num_workers: 0 # should be 8, but reduced so that no error comes out
 
 ct_a_min: -832.062744140625 # -175
@@ -25,7 +25,9 @@ num_samples: 10
 phase: train
 uniform_sample: False
 datasetkey: ['10_03']
-cache_dataset: True
+cache_dataset: False
 cache_rate: 0.001 #1
-save_dir: ../../DiffTumor_data/Autopet/imagesTr_Step_1_pet_ct_processed
-save_dir_val: ../../DiffTumor_data/Autopet/imagesTs_Step_1_pet_ct_processed
+save_transform: True
+save_transform_val: True
+save_dir: ../../DiffTumor_data/Autopet/imagesTr_Step_2_pet_ct_processed
+save_dir_val: ../../DiffTumor_data/Autopet/imagesTs_Step_2_pet_ct_processed

@@ -1,4 +1,4 @@
-vqgan_ckpt: ../../DiffTumor_data/AutoencoderModel.ckpt
+vqgan_ckpt: /data/lychan/24_Summer_Research/DiffTumor/STEP1.AutoencoderModel/checkpoints/vq_gan/synt/AutoPET_with_val/lightning_logs/version_1/checkpoints/latest_checkpoint-v1.ckpt
 
 # Have to be derived from VQ-GAN Latent space dimensions
 diffusion_img_size: 24
@@ -7,11 +7,11 @@ diffusion_num_channels: 17
 out_dim: 8
 dim_mults: [1,2,4,8]
 results_folder: checkpoints/ddpm/
-results_folder_postfix: 'fold0_tumor_early_96_t4'
+results_folder_postfix: AutoPET_debugging #'fold0_tumor_early_96_t4'
 load_milestone: False
 
 batch_size: 2 # 40
-num_workers: 20
+num_workers: 0
 logger: wandb
 objective: pred_x0
 save_and_sample_every: 5 #1000
@@ -25,4 +25,4 @@ gradient_accumulate_every: 2 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
 num_sample_rows: 1
-gpus: 1
+gpus: [0, 1, 2, 3]

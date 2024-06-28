@@ -60,7 +60,9 @@ class DiskDataset(Dataset):
         try:
             loaded = np.load(filepath)
             data = [{'image': arr} for arr in loaded.values()]
+            print("this one is preprocesed")
         except:
+            print("this one is on the fly")
             data = super().__getitem__(index)
             if self.save_dir is not None:
                 try:
@@ -536,8 +538,7 @@ if __name__ == "__main__":
 
     val_loader, _, length = get_loader(config)
 
-    from tqdm import tqdm
-
-    for item in tqdm(val_loader, total=len(val_loader)):
-        pass
+    while True:
+        for item in tqdm(val_loader, total=len(val_loader)):
+            pass
 
