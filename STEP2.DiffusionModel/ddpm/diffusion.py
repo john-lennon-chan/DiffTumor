@@ -1,9 +1,11 @@
 import math
 import copy
 import torch
+import torchvision
 from torch import nn, einsum
 import torch.nn.functional as F
 from functools import partial
+import numpy as np
 
 from torch.utils import data
 from pathlib import Path
@@ -813,7 +815,7 @@ class GaussianDiffusion(nn.Module):
         else:
             raise NotImplementedError()
 
-        return loss
+        return loss, x_recon
 
     def forward(self, img, mask, *args, **kwargs):
         #bs = int(x.shape[0]/2)
@@ -983,7 +985,7 @@ class Trainer(object):
                 #input_data = torch.cat([image, mask], dim=0)
 
                 with autocast(enabled=self.amp):
-                    loss = self.model(
+                    loss, x_recon = self.model(
                         image,
                         mask,
                         prob_focus_present=prob_focus_present,
@@ -1023,6 +1025,56 @@ class Trainer(object):
                     milestone = self.step // self.save_and_sample_every
 
                 self.save(milestone)
+
+                slice_num = 35
+                #print(f"image shape is {image.shape}")
+                image = image.permute(0, 1, -1, -3, -2).detach().cpu()
+                #image = torch.sum(image[:1, :, :, :, :], dim=3)/image.shape[-1]
+                image = (image[:1, :, slice_num, :, :] + 1.0) * 127.5
+                torch.clamp(image, 0, 255)
+                #print(f"image shape is {image.shape}")
+                for i, name in enumerate(['CT', 'PET']):
+                    grid = torchvision.utils.make_grid(image[:, i:i+1, :, :], nrow=4)
+                    grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
+                    grid = grid.numpy()
+                    # print(f"Grid shape: {grid.shape}")
+                    grid = grid.astype(np.uint8)
+                    filename = "original_gs-{:06}_{}.png".format(
+                        self.step,
+                        name
+                        )
+                    if not os.path.exists(os.path.join(self.results_folder, 'images')):
+                        os.mkdir(os.path.join(self.results_folder, 'images'))
+                    path = os.path.join(self.results_folder, 'images', filename)
+                    Image.fromarray(grid).save(path)
+                #self.writer.add_images('GT_CT', image[:, 0:1, :, :], self.step)
+                #self.writer.add_images('GT_PET', image[:, 1:2, :, :], self.step)
+
+                with torch.no_grad():
+                    x_recon = (((x_recon[0:1] + 1.0) / 2.0) * (self.model.vqgan.codebook.embeddings.max() -
+                                                          self.model.vqgan.codebook.embeddings.min())) + self.model.vqgan.codebook.embeddings.min()
+
+                    sampled_image = self.model.vqgan.decode(x_recon, quantize=True)
+                sampled_image = sampled_image.permute(0, 1, -1, -3, -2).detach().cpu()
+                sampled_image = (sampled_image[:1, :, slice_num, :, :] + 1.0) * 127.5
+                torch.clamp(sampled_image, 0, 255)
+                #print(f"image shape is {sampled_image.shape}")
+                for i, name in enumerate(['CT', 'PET']):
+                    grid = torchvision.utils.make_grid(sampled_image[:, i:i + 1, :, :], nrow=4)
+                    grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
+                    grid = grid.numpy()
+                    # print(f"Grid shape: {grid.shape}")
+                    grid = grid.astype(np.uint8)
+                    filename = "reconstruct_gs-{:06}_{}.png".format(
+                        self.step,
+                        name,
+                    )
+                    if not os.path.exists(os.path.join(self.results_folder, 'images')):
+                        os.mkdir(os.path.join(self.results_folder, 'images'))
+                    path = os.path.join(self.results_folder, 'images', filename)
+                    Image.fromarray(grid).save(path)
+                #self.writer.add_images('Reconstruct_CT', sampled_images[:, 0:1, :, :], self.step)
+                #self.writer.add_images('Reconstruct_PET', sampled_images[:, 1:2, :, :], self.step)
 
             log_fn(log)
             self.step += 1
