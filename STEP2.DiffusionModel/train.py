@@ -64,6 +64,17 @@ def run(cfg: DictConfig):
         num_frames=cfg.model.diffusion_depth_size,
         channels=cfg.model.diffusion_num_channels,
         timesteps=cfg.model.timesteps,
+        average_timesteps=cfg.model.average_timesteps,
+        loss_type=cfg.model.loss_type,
+    ).cuda()
+
+    sampling_diffusion = GaussianDiffusion(
+        model,
+        vqgan_ckpt=cfg.model.vqgan_ckpt,
+        image_size=cfg.model.diffusion_img_size,
+        num_frames=cfg.model.diffusion_depth_size,
+        channels=cfg.model.diffusion_num_channels,
+        timesteps=cfg.model.sampling_timesteps,
         loss_type=cfg.model.loss_type,
     ).cuda()
 
@@ -72,6 +83,7 @@ def run(cfg: DictConfig):
 
     trainer = Trainer(
         diffusion,
+        sampling_diffusion,
         cfg=cfg,
         dataset=train_dataloader,
         train_batch_size=cfg.model.batch_size,

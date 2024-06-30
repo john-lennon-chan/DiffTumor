@@ -22,8 +22,13 @@ from rotary_embedding_torch import RotaryEmbedding
 from ddpm.text import tokenize, bert_embed, BERT_MODEL_DIM
 from torch.utils.data import Dataset, DataLoader
 from vq_gan_3d.model.vqgan import VQGAN
+from ddpm.ddim import DDIMSampler
+from scipy.ndimage import gaussian_filter
 
 import matplotlib.pyplot as plt
+
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = "0"
 
 def exists(x):
     return x is not None
@@ -600,6 +605,7 @@ class GaussianDiffusion(nn.Module):
         text_use_bert_cls=False,
         channels=3,
         timesteps=1000,
+        average_timesteps=4,
         loss_type='l1',
         use_dynamic_thres=False, 
         dynamic_thres_percentile=0.9,
@@ -625,6 +631,7 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
+        self.average_timesteps = average_timesteps
         self.loss_type = loss_type
 
         # register buffer helper function that casts float64 to float32
@@ -675,6 +682,55 @@ class GaussianDiffusion(nn.Module):
         self.use_dynamic_thres = use_dynamic_thres
         self.dynamic_thres_percentile = dynamic_thres_percentile
 
+    def _update(self, sampling_timesteps):
+        betas = cosine_beta_schedule(sampling_timesteps)
+
+        alphas = 1. - betas
+        alphas_cumprod = torch.cumprod(alphas, axis=0)
+        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.)
+
+        timesteps, = betas.shape
+        self.num_timesteps = int(timesteps)
+
+        # register buffer helper function that casts float64 to float32
+
+        def register_buffer(name, val): return self.register_buffer(
+            name, val.to(torch.float32))
+
+        register_buffer('betas', betas)
+        register_buffer('alphas_cumprod', alphas_cumprod)
+        register_buffer('alphas_cumprod_prev', alphas_cumprod_prev)
+
+        # calculations for diffusion q(x_t | x_{t-1}) and others
+
+        register_buffer('sqrt_alphas_cumprod', torch.sqrt(alphas_cumprod))
+        register_buffer('sqrt_one_minus_alphas_cumprod',
+                        torch.sqrt(1. - alphas_cumprod))
+        register_buffer('log_one_minus_alphas_cumprod',
+                        torch.log(1. - alphas_cumprod))
+        register_buffer('sqrt_recip_alphas_cumprod',
+                        torch.sqrt(1. / alphas_cumprod))
+        register_buffer('sqrt_recipm1_alphas_cumprod',
+                        torch.sqrt(1. / alphas_cumprod - 1))
+
+        # calculations for posterior q(x_{t-1} | x_t, x_0)
+
+        posterior_variance = betas * \
+                             (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+
+        # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)
+
+        register_buffer('posterior_variance', posterior_variance)
+
+        # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
+
+        register_buffer('posterior_log_variance_clipped',
+                        torch.log(posterior_variance.clamp(min=1e-20)))
+        register_buffer('posterior_mean_coef1', betas *
+                        torch.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod))
+        register_buffer('posterior_mean_coef2', (1. - alphas_cumprod_prev)
+                        * torch.sqrt(alphas) / (1. - alphas_cumprod))
+
     def q_mean_variance(self, x_start, t):
         mean = extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
         variance = extract(1. - self.alphas_cumprod, t, x_start.shape)
@@ -700,7 +756,7 @@ class GaussianDiffusion(nn.Module):
 
     def p_mean_variance(self, x, t, clip_denoised: bool, cond=None, cond_scale=1.):
         x_recon = self.predict_start_from_noise(
-            x, t=t, noise=self.denoise_fn.forward_with_cond_scale(x, t, cond=cond, cond_scale=cond_scale))
+            x, t=t, noise=self.denoise_fn.module.forward_with_cond_scale(x, t, cond=cond, cond_scale=cond_scale))
 
         if clip_denoised:
             s = 1.
@@ -721,6 +777,8 @@ class GaussianDiffusion(nn.Module):
             x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
+
+
     @torch.inference_mode()
     def p_sample(self, x, t, cond=None, cond_scale=1., clip_denoised=True):
         b, *_, device = *x.shape, x.device
@@ -739,7 +797,7 @@ class GaussianDiffusion(nn.Module):
         b = shape[0]
         img = torch.randn(shape, device=device)
         print('cond', cond.shape)
-        for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+        for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps): # change here later please
             img = self.p_sample(img, torch.full(
                 (b,), i, device=device, dtype=torch.long), cond=cond, cond_scale=cond_scale)
 
@@ -809,13 +867,13 @@ class GaussianDiffusion(nn.Module):
         x_recon = self.denoise_fn(x_noisy, t, cond=cond, **kwargs)
 
         if self.loss_type == 'l1':
-            loss = F.l1_loss(noise, x_recon)
+            loss = F.l1_loss(x_start, x_recon)
         elif self.loss_type == 'l2':
-            loss = F.mse_loss(noise, x_recon)
+            loss = F.mse_loss(x_start, x_recon)
         else:
             raise NotImplementedError()
 
-        return loss, x_recon
+        return loss
 
     def forward(self, img, mask, *args, **kwargs):
         #bs = int(x.shape[0]/2)
@@ -851,8 +909,9 @@ class GaussianDiffusion(nn.Module):
         cond = torch.cat((masked_img, cc), dim=1)
 
         b, device, img_size, = img.shape[0], img.device, self.image_size
-        t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
-        return self.p_losses(img, t, cond=cond, *args, **kwargs)
+        t = torch.poisson(self.average_timesteps * torch.ones(b)).long().to(device)
+        #t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
+        return self.p_losses(img, t, cond=cond, *args, **kwargs), cond, masked_img
 
 # trainer class
 
@@ -874,6 +933,7 @@ class Trainer(object):
     def __init__(
         self,
         diffusion_model,
+        sampling_diffusion_model,
         cfg,
         folder=None,
         dataset=None,
@@ -895,6 +955,7 @@ class Trainer(object):
     ):
         super().__init__()
         self.model = diffusion_model
+        self.sampling_model = sampling_diffusion_model
         self.ema = EMA(ema_decay)
         self.ema_model = copy.deepcopy(self.model)
         self.update_ema_every = update_ema_every
@@ -929,6 +990,7 @@ class Trainer(object):
         self.writer = SummaryWriter(str(self.results_folder)+'/logs')
         
         self.reset_parameters()
+
 
     def reset_parameters(self):
         self.ema_model.load_state_dict(self.model.state_dict())
@@ -985,7 +1047,7 @@ class Trainer(object):
                 #input_data = torch.cat([image, mask], dim=0)
 
                 with autocast(enabled=self.amp):
-                    loss, x_recon = self.model(
+                    loss, cond, _ = self.model(
                         image,
                         mask,
                         prob_focus_present=prob_focus_present,
@@ -1028,13 +1090,13 @@ class Trainer(object):
 
                 slice_num = 35
                 #print(f"image shape is {image.shape}")
-                image = image.permute(0, 1, -1, -3, -2).detach().cpu()
+                image_post = copy.deepcopy(image).detach().cpu() #permute(0, 1, -1, -3, -2)
                 #image = torch.sum(image[:1, :, :, :, :], dim=3)/image.shape[-1]
-                image = (image[:1, :, slice_num, :, :] + 1.0) * 127.5
-                torch.clamp(image, 0, 255)
+                image_post = (image_post[:1, :, slice_num, :, :] + 1.0) * 127.5
+                torch.clamp(image_post, 0, 255)
                 #print(f"image shape is {image.shape}")
                 for i, name in enumerate(['CT', 'PET']):
-                    grid = torchvision.utils.make_grid(image[:, i:i+1, :, :], nrow=4)
+                    grid = torchvision.utils.make_grid(image_post[:, i:i+1, :, :], nrow=4)
                     grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
                     grid = grid.numpy()
                     # print(f"Grid shape: {grid.shape}")
@@ -1051,12 +1113,30 @@ class Trainer(object):
                 #self.writer.add_images('GT_PET', image[:, 1:2, :, :], self.step)
 
                 with torch.no_grad():
-                    x_recon = (((x_recon[0:1] + 1.0) / 2.0) * (self.model.vqgan.codebook.embeddings.max() -
-                                                          self.model.vqgan.codebook.embeddings.min())) + self.model.vqgan.codebook.embeddings.min()
+                    #self.sampling_model.eval()
+                    #self.sampling_model.load_state_dict(self.ema_model.state_dict())
+                    #sampler = DDIMSampler(self.sampling_model, schedule="cosine")
+                    #ddim_ts = 50
+                    #shape = mask.shape[-4:]
+                    #sampled_image, _ = sampler.sample(S=ddim_ts,
+                    #       conditioning=cond,
+                    #       batch_size=1,
+                    #       shape=shape,
+                    #       verbose=False)
+                    sample = copy.deepcopy(self.model.sample(cond=copy.deepcopy(cond)[:1,:,:,:,:], cond_scale=1.0, batch_size=1)).detach().cpu()
+                    # post-process
+                    mask_01 = torch.clamp((mask[:1,:,:,:,:] + 1.0) / 2.0, min=0.0, max=1.0)
+                    sigma = np.random.uniform(0, 4)  # (1, 2)
+                    mask_01_np_blur = gaussian_filter(mask_01.cpu().numpy() * 1.0, sigma=[0, 0, sigma, sigma, sigma])
 
-                    sampled_image = self.model.vqgan.decode(x_recon, quantize=True)
-                sampled_image = sampled_image.permute(0, 1, -1, -3, -2).detach().cpu()
-                sampled_image = (sampled_image[:1, :, slice_num, :, :] + 1.0) * 127.5
+                    volume_ = torch.clamp((image.cpu()[:1,:,:,:,:] + 1.0) / 2.0, min=0.0, max=1.0)
+                    sample_ = torch.clamp((sample + 1.0) / 2.0, min=0.0, max=1.0)
+
+                    mask_01_blur = torch.from_numpy(mask_01_np_blur).to(device='cpu')
+                    final_volume_ = (1 - mask_01_blur) * volume_ + mask_01_blur * sample_
+                    final_volume_ = torch.clamp(final_volume_, min=0.0, max=1.0)
+                sampled_image = final_volume_.permute(0, 1, -2, -1, -3)
+                sampled_image = (sampled_image[:1, :, slice_num, :, :]) * 255
                 torch.clamp(sampled_image, 0, 255)
                 #print(f"image shape is {sampled_image.shape}")
                 for i, name in enumerate(['CT', 'PET']):
