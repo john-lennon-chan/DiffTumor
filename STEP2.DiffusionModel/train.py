@@ -39,8 +39,7 @@ def run(cfg: DictConfig):
     # Assuming cfg.gpus contains the list of GPUs to use
     if len(cfg.model.gpus) > 1:
         model = nn.DataParallel(model, device_ids=cfg.model.gpus)
-    else:
-        torch.cuda.set_device(cfg.model.gpus[0])
+    torch.cuda.set_device(cfg.model.gpus[0])
 
     # Initialize the distributed environment.
     #dist.init_process_group(backend='nccl')
@@ -79,13 +78,16 @@ def run(cfg: DictConfig):
     ).cuda()
 
     train_dataloader, train_sampler, dataset_size = get_loader(cfg.dataset)
-    val_dataloader=None
+    cfg.dataset.phase = "validation"
+    val_dataloader, val_sampler, _ = get_loader(cfg.dataset)
+    cfg.dataset.phase = "train"
 
     trainer = Trainer(
         diffusion,
         sampling_diffusion,
         cfg=cfg,
         dataset=train_dataloader,
+        val_dataset=val_dataloader,
         train_batch_size=cfg.model.batch_size,
         save_and_sample_every=cfg.model.save_and_sample_every,
         train_lr=cfg.model.train_lr,
@@ -99,7 +101,7 @@ def run(cfg: DictConfig):
     )
 
     if cfg.model.load_milestone:
-        trainer.load(cfg.model.load_milestone)
+        trainer.load(cfg.model.load_milestone, map_location=f"cuda:{cfg.model.gpus[0]}")
 
     trainer.train()
 

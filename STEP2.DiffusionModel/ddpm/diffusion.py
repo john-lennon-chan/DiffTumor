@@ -867,9 +867,9 @@ class GaussianDiffusion(nn.Module):
         x_recon = self.denoise_fn(x_noisy, t, cond=cond, **kwargs)
 
         if self.loss_type == 'l1':
-            loss = F.l1_loss(x_start, x_recon)
+            loss = F.l1_loss(noise, x_recon)
         elif self.loss_type == 'l2':
-            loss = F.mse_loss(x_start, x_recon)
+            loss = F.mse_loss(noise, x_recon)
         else:
             raise NotImplementedError()
 
@@ -910,7 +910,7 @@ class GaussianDiffusion(nn.Module):
 
         b, device, img_size, = img.shape[0], img.device, self.image_size
         t = torch.poisson(self.average_timesteps * torch.ones(b)).long().to(device)
-        #t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
+        #t = torch.randint(0, self.average_timesteps, (b,), device=device).long()
         return self.p_losses(img, t, cond=cond, *args, **kwargs), cond, masked_img
 
 # trainer class
@@ -926,6 +926,17 @@ def normalize_img(t):
 def unnormalize_img(t):
     return (t + 1) * 0.5
 
+def cycle(train_dl, val_dl):
+    train_iter = iter(train_dl)
+    val_iter = iter(val_dl)
+    while True:
+        for data in train_iter:
+            yield data, True
+        for data in val_iter:
+            yield data, False
+        train_iter = iter(train_dl)
+        val_iter = iter(val_dl)
+
 # trainer clas
 from tensorboardX import SummaryWriter
 import os
@@ -937,6 +948,7 @@ class Trainer(object):
         cfg,
         folder=None,
         dataset=None,
+        val_dataset=None,
         *,
         ema_decay=0.995,
         num_frames=16,
@@ -972,7 +984,7 @@ class Trainer(object):
         dl=dataset
 
         self.len_dataloader = len(dl)
-        self.dl = cycle(dl)
+        self.dl = cycle(dl, val_dataset)
 
         
         self.opt = Adam(diffusion_model.parameters(), lr=train_lr)
@@ -1038,7 +1050,7 @@ class Trainer(object):
         best_train_loss = 0.05
         while self.step < self.train_num_steps:
             for i in range(self.gradient_accumulate_every):
-                data = next(self.dl)
+                data, is_train = next(self.dl)
                 image = data['image'].cuda()
                 mask = data['label'].cuda()
                 mask[mask==1]=0
@@ -1054,33 +1066,44 @@ class Trainer(object):
                         focus_present_mask=focus_present_mask
                     )
 
-                    self.scaler.scale(
-                        loss / self.gradient_accumulate_every).backward()
+                    if is_train:
+
+                        self.scaler.scale(
+                            loss / self.gradient_accumulate_every).backward()
 
                 print(f'{self.step}: {loss.item()}')
 
             log = {'loss': loss.item()}
+            if is_train:
+                if exists(self.max_grad_norm):
+                    self.scaler.unscale_(self.opt)
+                    nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.max_grad_norm)
 
-            if exists(self.max_grad_norm):
-                self.scaler.unscale_(self.opt)
-                nn.utils.clip_grad_norm_(
-                    self.model.parameters(), self.max_grad_norm)
+                self.scaler.step(self.opt)
+                self.scaler.update()
+                self.opt.zero_grad()
 
-            self.scaler.step(self.opt)
-            self.scaler.update()
-            self.opt.zero_grad()
+                lr = self.opt.state_dict()['param_groups'][0]['lr']
 
-            lr = self.opt.state_dict()['param_groups'][0]['lr']
-            self.writer.add_scalar('Train_Loss', loss.item(), self.step)
-            self.writer.add_scalar('Learning_rate', lr, self.step)
+                self.writer.add_scalar('Train_Loss', loss.item(), self.step)
+                self.writer.add_scalar('Learning_rate', lr, self.step)
+            else:
+                self.writer.add_scalar('Val_Loss', loss.item(), self.step)
 
-            if self.step % self.update_ema_every == 0:
-                self.step_ema()
+            if is_train:
+                if self.step % self.update_ema_every == 0:
+                    self.step_ema()
 
             if loss.item() < best_train_loss:
                 best_train_loss = loss.item()
                 self.save('model_best')
                 print('best model: {} step'.format(self.step // self.save_and_sample_every))
+
+            folder_path_dict = {True: 'train', False: 'val'}
+
+            if not os.path.exists(str(self.results_folder)+'/images'):
+                os.makedirs(str(self.results_folder)+'/images')
 
             if self.step != 0 and self.step % self.save_and_sample_every == 0:
                 with torch.no_grad():
@@ -1101,12 +1124,12 @@ class Trainer(object):
                     grid = grid.numpy()
                     # print(f"Grid shape: {grid.shape}")
                     grid = grid.astype(np.uint8)
-                    filename = "original_gs-{:06}_{}.png".format(
+                    filename = os.path.join(folder_path_dict[is_train], "original_gs-{:06}_{}.png".format(
                         self.step,
                         name
-                        )
-                    if not os.path.exists(os.path.join(self.results_folder, 'images')):
-                        os.mkdir(os.path.join(self.results_folder, 'images'))
+                        ))
+                    if not os.path.exists(os.path.join(self.results_folder, 'images', folder_path_dict[is_train])):
+                        os.mkdir(os.path.join(self.results_folder, 'images', folder_path_dict[is_train]))
                     path = os.path.join(self.results_folder, 'images', filename)
                     Image.fromarray(grid).save(path)
                 #self.writer.add_images('GT_CT', image[:, 0:1, :, :], self.step)
@@ -1123,41 +1146,53 @@ class Trainer(object):
                     #       batch_size=1,
                     #       shape=shape,
                     #       verbose=False)
-                    sample = copy.deepcopy(self.model.sample(cond=copy.deepcopy(cond)[:1,:,:,:,:], cond_scale=1.0, batch_size=1)).detach().cpu()
+                    sample = self.model.sample(cond=copy.deepcopy(cond)[:1,:,:,:,:], cond_scale=1.0, batch_size=1).detach().cpu()
                     # post-process
                     mask_01 = torch.clamp((mask[:1,:,:,:,:] + 1.0) / 2.0, min=0.0, max=1.0)
                     sigma = np.random.uniform(0, 4)  # (1, 2)
                     mask_01_np_blur = gaussian_filter(mask_01.cpu().numpy() * 1.0, sigma=[0, 0, sigma, sigma, sigma])
 
-                    volume_ = torch.clamp((image.cpu()[:1,:,:,:,:] + 1.0) / 2.0, min=0.0, max=1.0)
+                    volume_ = torch.clamp((image.cpu().permute(0,1,-1,-3,-2)[:1,:,:,:,:] + 1.0) / 2.0, min=0.0, max=1.0)
                     sample_ = torch.clamp((sample + 1.0) / 2.0, min=0.0, max=1.0)
 
                     mask_01_blur = torch.from_numpy(mask_01_np_blur).to(device='cpu')
-                    final_volume_ = (1 - mask_01_blur) * volume_ + mask_01_blur * sample_
-                    final_volume_ = torch.clamp(final_volume_, min=0.0, max=1.0)
-                sampled_image = final_volume_.permute(0, 1, -2, -1, -3)
-                sampled_image = (sampled_image[:1, :, slice_num, :, :]) * 255
-                torch.clamp(sampled_image, 0, 255)
-                #print(f"image shape is {sampled_image.shape}")
-                for i, name in enumerate(['CT', 'PET']):
-                    grid = torchvision.utils.make_grid(sampled_image[:, i:i + 1, :, :], nrow=4)
-                    grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
-                    grid = grid.numpy()
-                    # print(f"Grid shape: {grid.shape}")
-                    grid = grid.astype(np.uint8)
-                    filename = "reconstruct_gs-{:06}_{}.png".format(
-                        self.step,
-                        name,
-                    )
-                    if not os.path.exists(os.path.join(self.results_folder, 'images')):
-                        os.mkdir(os.path.join(self.results_folder, 'images'))
-                    path = os.path.join(self.results_folder, 'images', filename)
-                    Image.fromarray(grid).save(path)
+                final_volume_ = (1 - mask_01_blur) * volume_ + mask_01_blur * sample_
+                final_volume_ = torch.clamp(final_volume_, min=0.0, max=1.0)
+                sampled_images = {"reconstruct": final_volume_,
+                                  "healthy": (1 - mask_01_blur) * volume_,
+                                  "mask": mask_01.cpu() * torch.ones_like(volume_),
+                                  "sample": sample_,
+                                  "tumor_generated": mask_01_blur * sample_}
+                def save_images(prefix, sampled_image):
+                    sampled_image = sampled_image.permute(0, 1, -2, -1, -3)
+                    sampled_image = (sampled_image[:1, :, slice_num, :, :]) * 255
+                    torch.clamp(sampled_image, 0, 255)
+                    #print(f"image shape is {sampled_image.shape}")
+                    for i, name in enumerate(['CT', 'PET']):
+                        grid = torchvision.utils.make_grid(sampled_image[:, i:i + 1, :, :], nrow=4)
+                        grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
+                        grid = grid.numpy()
+                        # print(f"Grid shape: {grid.shape}")
+                        grid = grid.astype(np.uint8)
+                        filename = os.path.join(folder_path_dict[is_train], "{}_gs-{:06}_{}.png".format(
+                            prefix,
+                            self.step,
+                            name,
+                        ))
+                        if not os.path.exists(os.path.join(self.results_folder, 'images', folder_path_dict[is_train])):
+                            os.mkdir(os.path.join(self.results_folder, 'images', folder_path_dict[is_train]))
+                        path = os.path.join(self.results_folder, 'images', filename)
+                        Image.fromarray(grid).save(path)
+                for prefix, sampled_image in sampled_images.items():
+                    save_images(prefix, sampled_image)
                 #self.writer.add_images('Reconstruct_CT', sampled_images[:, 0:1, :, :], self.step)
                 #self.writer.add_images('Reconstruct_PET', sampled_images[:, 1:2, :, :], self.step)
 
-            log_fn(log)
-            self.step += 1
+
+
+            if is_train:
+                log_fn(log)
+                self.step += 1
 
         print('training completed')
 

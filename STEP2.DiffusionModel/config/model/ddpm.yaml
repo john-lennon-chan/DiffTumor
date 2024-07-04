@@ -1,4 +1,4 @@
-vqgan_ckpt: /data/lychan/24_Summer_Research/DiffTumor/STEP1.AutoencoderModel/checkpoints/vq_gan/synt/AutoPET_with_val/lightning_logs/version_1/checkpoints/latest_checkpoint-v1.ckpt
+vqgan_ckpt: ../STEP1.AutoencoderModel/checkpoints/vq_gan/synt/AutoPET_with_val/lightning_logs/version_1/checkpoints/latest_checkpoint-v1.ckpt
 
 # Have to be derived from VQ-GAN Latent space dimensions
 diffusion_img_size: 24
@@ -7,8 +7,8 @@ diffusion_num_channels: 17
 out_dim: 8
 dim_mults: [1,2,4,8]
 results_folder: checkpoints/ddpm/
-results_folder_postfix: AutoPET_more_steps #'fold0_tumor_early_96_t4'
-load_milestone: False #/data/lychan/24_Summer_Research/DiffTumor/STEP2.DiffusionModel/checkpoints/ddpm/liver_tumor_train/AutoPET_1/10.pt
+results_folder_postfix: AutoPET_more_steps_correct_2 #'fold0_tumor_early_96_t4'
+load_milestone: ../STEP2.DiffusionModel/checkpoints/ddpm/liver_tumor_train/AutoPET_more_steps_correct_2/91.pt
 
 batch_size: 2 # 40
 num_workers: 0
@@ -26,4 +26,4 @@ gradient_accumulate_every: 2 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
 num_sample_rows: 1
-gpus: [0, 1, 2, 3]
+gpus: [0, 1, 2, 3, 4]
