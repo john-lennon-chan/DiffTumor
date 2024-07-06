@@ -1074,22 +1074,24 @@ class Trainer(object):
                 print(f'{self.step}: {loss.item()}')
 
             log = {'loss': loss.item()}
-            if is_train:
-                if exists(self.max_grad_norm):
-                    self.scaler.unscale_(self.opt)
-                    nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.max_grad_norm)
+            if -0.0001 < self.step % 1 < 0.0001:
+                self.step = int(self.step)
+                if is_train:
+                    if exists(self.max_grad_norm):
+                        self.scaler.unscale_(self.opt)
+                        nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.max_grad_norm)
 
-                self.scaler.step(self.opt)
-                self.scaler.update()
-                self.opt.zero_grad()
+                    self.scaler.step(self.opt)
+                    self.scaler.update()
+                    self.opt.zero_grad()
 
-                lr = self.opt.state_dict()['param_groups'][0]['lr']
+                    lr = self.opt.state_dict()['param_groups'][0]['lr']
 
-                self.writer.add_scalar('Train_Loss', loss.item(), self.step)
-                self.writer.add_scalar('Learning_rate', lr, self.step)
-            else:
-                self.writer.add_scalar('Val_Loss', loss.item(), self.step)
+                    self.writer.add_scalar('Train_Loss', loss.item(), self.step)
+                    self.writer.add_scalar('Learning_rate', lr, self.step)
+                else:
+                    self.writer.add_scalar('Val_Loss', loss.item(), self.step)
 
             if is_train:
                 if self.step % self.update_ema_every == 0:
@@ -1192,7 +1194,7 @@ class Trainer(object):
 
             if is_train:
                 log_fn(log)
-                self.step += 1
+                self.step += self.batch_size/10
 
         print('training completed')
 

@@ -7,10 +7,10 @@ diffusion_num_channels: 17
 out_dim: 8
 dim_mults: [1,2,4,8]
 results_folder: checkpoints/ddpm/
-results_folder_postfix: AutoPET_more_steps_correct_2 #'fold0_tumor_early_96_t4'
-load_milestone: ../STEP2.DiffusionModel/checkpoints/ddpm/liver_tumor_train/AutoPET_more_steps_correct_2/91.pt
+results_folder_postfix: AutoPET_more_steps_correct_3_lower_batch_size #'fold0_tumor_early_96_t4'
+load_milestone: ../STEP2.DiffusionModel/checkpoints/ddpm/liver_tumor_train/AutoPET_more_steps_correct_3_lower_batch_size/188.pt
 
-batch_size: 2 # 40
+batch_size: 10 # 40
 num_workers: 0
 logger: wandb
 objective: pred_x0
@@ -22,7 +22,7 @@ average_timesteps: 4 # number of steps
 sampling_timesteps: 200 # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
 loss_type: l1 # L1 or L2
 train_num_steps: 60000 # total training steps
-gradient_accumulate_every: 2 # gradient accumulation steps
+gradient_accumulate_every: 1 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
 num_sample_rows: 1
