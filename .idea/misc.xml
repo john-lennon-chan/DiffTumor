@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="difftumor" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="difftumor" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="difftumor_corrected" project-jdk-type="Python SDK" />
 </project>
